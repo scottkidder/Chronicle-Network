@@ -41,7 +41,11 @@ abstract public class Cluster<E extends HostDetails, C extends ClusterContext> i
         this.clusterName = clusterName;
     }
 
-    protected C clusterContext() {
+    public String clusterName() {
+        return clusterName;
+    }
+
+    public C clusterContext() {
         return (C) clusterContext;
     }
 
@@ -50,13 +54,11 @@ abstract public class Cluster<E extends HostDetails, C extends ClusterContext> i
 
         hostDetails.clear();
 
-        if (!wire.hasMore())
+        if (wire.isEmpty())
             return;
-        while (wire.hasMore()) {
-
-            StringBuilder sb = Wires.acquireStringBuilder();
-
-            ValueIn valueIn = wire.readEventName(sb);
+        while (!wire.isEmpty()) {
+            final StringBuilder sb = Wires.acquireStringBuilder();
+            final ValueIn valueIn = wire.readEventName(sb);
 
             if ("context".contentEquals(sb)) {
                 clusterContext = (C) valueIn.typedMarshallable();
@@ -72,16 +74,17 @@ abstract public class Cluster<E extends HostDetails, C extends ClusterContext> i
 
         }
 
-        if (clusterContext == null)
-            throw new IllegalStateException("required field 'context' is missing.");
+        // commented out as this causes issues with the chronicle-engine gui
+        //  if (clusterContext == null)
+        //       throw new IllegalStateException("required field 'context' is missing.");
 
     }
 
     @Nullable
-    private HostDetails findHostDetails(int remoteIdentifier) {
+    public HostDetails findHostDetails(int id) {
 
         for (HostDetails hd : hostDetails.values()) {
-            if (hd.hostId() == remoteIdentifier)
+            if (hd.hostId() == id)
                 return hd;
         }
         return null;
