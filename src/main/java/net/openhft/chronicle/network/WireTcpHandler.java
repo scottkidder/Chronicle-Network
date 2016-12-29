@@ -19,6 +19,7 @@ package net.openhft.chronicle.network;
 import net.openhft.chronicle.bytes.Bytes;
 import net.openhft.chronicle.core.Jvm;
 import net.openhft.chronicle.core.annotation.Nullable;
+import net.openhft.chronicle.core.io.Closeable;
 import net.openhft.chronicle.network.api.TcpHandler;
 import net.openhft.chronicle.network.connection.WireOutPublisher;
 import net.openhft.chronicle.wire.*;
@@ -44,7 +45,7 @@ public abstract class WireTcpHandler<T extends NetworkContext>
     long writeBps;
     long bytesReadCount;
     int socketPollCount;
-    long lastMonitor;
+    volatile long lastMonitor;
     @NotNull
     private Wire inWire;
     private boolean recreateWire;
@@ -56,7 +57,7 @@ public abstract class WireTcpHandler<T extends NetworkContext>
     private boolean isAcceptor;
     private long lastReadRemaining;
 
-    private static void logYaml(final DocumentContext dc) {
+    private static void logYaml(@NotNull final DocumentContext dc) {
         if (YamlLogging.showServerWrites() || YamlLogging.showServerReads())
             try {
                 LOG.info("\nDocumentContext:\n" +
@@ -68,7 +69,7 @@ public abstract class WireTcpHandler<T extends NetworkContext>
             }
     }
 
-    private static void logYaml(final WireOut outWire) {
+    private static void logYaml(@NotNull final WireOut outWire) {
         if (YamlLogging.showServerWrites())
             try {
                 LOG.info("\nServer Sends:\n" +
@@ -96,7 +97,7 @@ public abstract class WireTcpHandler<T extends NetworkContext>
         return publisher;
     }
 
-    public void publisher(WireOutPublisher publisher) {
+    public void publisher(@NotNull WireOutPublisher publisher) {
         this.publisher = publisher;
         if (wireType() != null)
             publisher.wireType(wireType());
@@ -136,10 +137,10 @@ public abstract class WireTcpHandler<T extends NetworkContext>
 
             if (networkStatsListener != null) {
                 if (lastMonitor == 0) {
-                    networkStatsListener.onNetworkStats(0, 0, 0, nc, true);
+                    networkStatsListener.onNetworkStats(0, 0, 0);
                 } else {
                     networkStatsListener.onNetworkStats(writeBps / 10, bytesReadCount / 10,
-                            socketPollCount / 10, nc, true);
+                            socketPollCount / 10);
 
                     writeBps = bytesReadCount = socketPollCount = 0;
                 }
@@ -168,7 +169,7 @@ public abstract class WireTcpHandler<T extends NetworkContext>
         final NetworkStatsListener networkStatsListener = nc().networkStatsListener();
 
         if (networkStatsListener != null)
-            networkStatsListener.onNetworkStats(-1, -1, -1, nc, false);
+            networkStatsListener.onNetworkStats(-1, -1, -1);
 
         if (publisher != null)
             publisher.close();
@@ -210,7 +211,7 @@ public abstract class WireTcpHandler<T extends NetworkContext>
     }
 
     private void ensureCapacity() {
-        final Bytes<?> bytes = inWire.bytes();
+        @NotNull final Bytes<?> bytes = inWire.bytes();
         if (bytes.readRemaining() >= 4) {
             final long pos = bytes.readPosition();
             int length = bytes.readInt(pos);
@@ -222,7 +223,7 @@ public abstract class WireTcpHandler<T extends NetworkContext>
     }
 
     private void resizeInWire(long size) {
-        final Bytes<?> bytes = inWire.bytes();
+        @NotNull final Bytes<?> bytes = inWire.bytes();
         if (size > bytes.realCapacity()) {
             Jvm.debug().on(getClass(), Integer.toHexString(System.identityHashCode(bytes)) + " resized to: " + size);
             bytes.ensureCapacity(size);
@@ -315,7 +316,7 @@ public abstract class WireTcpHandler<T extends NetworkContext>
      */
     protected void writeData(boolean isNotComplete, @NotNull Bytes inBytes, @NotNull WriteMarshallable c) {
 
-        final WriteMarshallable marshallable = out -> {
+        @NotNull final WriteMarshallable marshallable = out -> {
             final long readPosition = inBytes.readPosition();
             final long position = outWire.bytes().writePosition();
             try {
@@ -358,7 +359,7 @@ public abstract class WireTcpHandler<T extends NetworkContext>
     @Override
     public void close() {
         closed = true;
-        nc.connectionClosed(true);
+        Closeable.closeQuietly(nc);
     }
 
     protected void publish(WriteMarshallable w) {

@@ -27,12 +27,13 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.function.Function;
 import java.util.function.Supplier;
+
+import static net.openhft.chronicle.network.NetworkStatsListener.notifyHostPort;
 
 /**
  * Created by peter.lawrey on 22/01/15.
@@ -44,6 +45,7 @@ public class AcceptorEventHandler implements EventHandler, Closeable {
     @NotNull
 
     private final ServerSocketChannel ssc;
+    @NotNull
     private final Supplier<? extends NetworkContext> ncFactory;
 
     private EventLoop eventLoop;
@@ -79,25 +81,19 @@ public class AcceptorEventHandler implements EventHandler, Closeable {
                 final NetworkContext nc = ncFactory.get();
                 nc.socketChannel(sc);
                 nc.isAcceptor(true);
+                NetworkStatsListener nl = nc.networkStatsListener();
+                if (nl != null)
+                    notifyHostPort(sc, nl);
+                TcpEventHandler apply = handlerFactory.apply(nc);
+                eventLoop.addHandler(apply);
 
-                NetworkStatsListener networkStatsListener = nc.networkStatsListener();
-
-                if (networkStatsListener != null) {
-                    if (sc.socket() != null && sc.socket().getRemoteSocketAddress()
-                            instanceof InetSocketAddress)
-                        networkStatsListener.onHostPort(
-                                ((InetSocketAddress) sc.socket().getRemoteSocketAddress()).getHostName(),
-                                ((InetSocketAddress) sc.socket().getRemoteSocketAddress()).getPort());
-                }
-
-                eventLoop.addHandler(handlerFactory.apply(nc));
             }
 
         } catch (AsynchronousCloseException e) {
             closeSocket();
         } catch (Exception e) {
             if (!closed) {
-                Jvm.debug().on(getClass(), e);
+                Jvm.fatal().on(getClass(), e);
                 closeSocket();
             }
         }

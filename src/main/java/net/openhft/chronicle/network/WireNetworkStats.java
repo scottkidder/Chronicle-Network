@@ -26,19 +26,42 @@ public class WireNetworkStats extends AbstractMarshallable implements
         NetworkStats<WireNetworkStats> {
     private long writeBps, readBps, socketPollCountPerSecond;
     private long timestamp;
-    private long localIdentifier;
-    private long remoteIdentifier;
+    private int localIdentifier;
+    private int remoteIdentifier;
     private String remoteHostName;
     private int remotePort;
     private String userId;
     private UUID clientId;
     private boolean isConnected;
     private Enum wireType;
+    private boolean isAcceptor;
+    private long percentile90th;
+    private long percentile50th;
+    private long percentile99th;
+
+    private long percentile99_9th;
+
+    public long percentile90th() {
+        return percentile90th;
+    }
+
+    public long percentile50th() {
+        return percentile50th;
+    }
+
+    public long percentile99th() {
+        return percentile99th;
+    }
+
+    public long percentile99_9th() {
+        return percentile99_9th;
+    }
 
     public Enum wireType() {
         return wireType;
     }
 
+    @NotNull
     public WireNetworkStats wireType(Enum wireType) {
         this.wireType = wireType;
         return this;
@@ -56,6 +79,7 @@ public class WireNetworkStats extends AbstractMarshallable implements
         return userId;
     }
 
+    @NotNull
     @Override
     public WireNetworkStats userId(String userId) {
         this.userId = userId;
@@ -67,6 +91,7 @@ public class WireNetworkStats extends AbstractMarshallable implements
         return writeBps;
     }
 
+    @NotNull
     @Override
     public WireNetworkStats writeBps(long writeBps) {
         this.writeBps = writeBps;
@@ -78,6 +103,7 @@ public class WireNetworkStats extends AbstractMarshallable implements
         return readBps;
     }
 
+    @NotNull
     @Override
     public WireNetworkStats readBps(long readBps) {
         this.readBps = readBps;
@@ -89,6 +115,7 @@ public class WireNetworkStats extends AbstractMarshallable implements
         return socketPollCountPerSecond;
     }
 
+    @NotNull
     @Override
     public WireNetworkStats socketPollCountPerSecond(long socketPollCountPerSecond) {
         this.socketPollCountPerSecond = socketPollCountPerSecond;
@@ -100,12 +127,14 @@ public class WireNetworkStats extends AbstractMarshallable implements
         return timestamp;
     }
 
+    @NotNull
     @Override
     public WireNetworkStats timestamp(long timestamp) {
         this.timestamp = timestamp;
         return this;
     }
 
+    @NotNull
     @Override
     public synchronized WireNetworkStats remoteHostName(@NotNull String hostName) {
         this.remoteHostName = hostName;
@@ -118,23 +147,35 @@ public class WireNetworkStats extends AbstractMarshallable implements
     }
 
     @Override
-    public long localIdentifier() {
+    public int localIdentifier() {
         return localIdentifier;
     }
 
+    @NotNull
     @Override
-    public WireNetworkStats localIdentifier(long localIdentifer) {
-        this.localIdentifier = localIdentifer;
+    public WireNetworkStats localIdentifier(int localIdentifier) {
+        this.localIdentifier = localIdentifier;
         return this;
     }
 
     @Override
-    public long remoteIdentifier() {
-        return remoteIdentifier;
+    public boolean isAcceptor() {
+        return this.isAcceptor;
     }
 
     @Override
-    public WireNetworkStats remoteIdentifier(long remoteIdentifier) {
+    public void isAcceptor(boolean isAcceptor) {
+        this.isAcceptor = isAcceptor;
+    }
+
+    @Override
+    public int remoteIdentifier() {
+        return remoteIdentifier;
+    }
+
+    @NotNull
+    @Override
+    public WireNetworkStats remoteIdentifier(int remoteIdentifier) {
         this.remoteIdentifier = remoteIdentifier;
         return this;
     }
@@ -167,6 +208,26 @@ public class WireNetworkStats extends AbstractMarshallable implements
     @Override
     public void isConnected(boolean isConnected) {
         this.isConnected = isConnected;
+    }
+
+    @Override
+    public void percentile50th(long percentile50th) {
+        this.percentile50th = percentile50th;
+    }
+
+    @Override
+    public void percentile90th(long percentile90th) {
+        this.percentile90th = percentile90th;
+    }
+
+    @Override
+    public void percentile99th(long percentile99th) {
+        this.percentile99th = percentile99th;
+    }
+
+    @Override
+    public void percentile99_9th(long percentile99_9th) {
+        this.percentile99_9th = percentile99_9th;
     }
 
 }

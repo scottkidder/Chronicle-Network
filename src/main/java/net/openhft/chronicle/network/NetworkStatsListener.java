@@ -17,14 +17,38 @@
 
 package net.openhft.chronicle.network;
 
+import net.openhft.chronicle.core.io.Closeable;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.net.InetSocketAddress;
+import java.nio.channels.SocketChannel;
 
 /**
  * @author Rob Austin.
  */
-public interface NetworkStatsListener<N extends NetworkContext> {
-    void onNetworkStats(long writeBps, long readBps, long socketPollCountPerSecond,
-                        @NotNull N networkContext, boolean connectionStatus);
+public interface NetworkStatsListener<N extends NetworkContext> extends Closeable {
+    void networkContext(N networkContext);
+
+    void onNetworkStats(long writeBps, long readBps, long socketPollCountPerSecond);
 
     void onHostPort(String hostName, int port);
+
+    void onRoundTripLatency(long nanosecondLatency);
+
+    /**
+     * notifies the NetworkStatsListener of the host and port based on the SocketChannel
+     *
+     * @param sc SocketChannel
+     * @param nl NetworkStatsListener
+     */
+    static void notifyHostPort(@Nullable final SocketChannel sc, @NotNull final NetworkStatsListener nl) {
+        if (sc != null && sc.socket() != null
+                && sc.socket().getRemoteSocketAddress() instanceof InetSocketAddress) {
+            @NotNull final InetSocketAddress remoteSocketAddress = (InetSocketAddress) sc.socket()
+                    .getRemoteSocketAddress();
+            nl.onHostPort(remoteSocketAddress.getHostName(), remoteSocketAddress.getPort());
+        }
+    }
+
 }

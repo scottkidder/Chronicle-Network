@@ -47,12 +47,14 @@ public class VanillaNetworkContext<T extends VanillaNetworkContext> implements N
     private Runnable socketReconnector;
     private NetworkStatsListener networkStatsListener;
     private ServerThreadingStrategy serverThreadingStrategy = ServerThreadingStrategy.SINGLE_THREADED;
+    private volatile boolean isClosed;
 
     @Override
     public SocketChannel socketChannel() {
         return socketChannel;
     }
 
+    @NotNull
     @Override
     public T socketChannel(SocketChannel socketChannel) {
         this.socketChannel = socketChannel;
@@ -68,6 +70,7 @@ public class VanillaNetworkContext<T extends VanillaNetworkContext> implements N
      * @param isAcceptor {@code} true if its a server socket, {@code} false if its a client
      * @return
      */
+    @NotNull
     @Override
     public T isAcceptor(boolean isAcceptor) {
         this.isAcceptor = isAcceptor;
@@ -97,6 +100,7 @@ public class VanillaNetworkContext<T extends VanillaNetworkContext> implements N
         return wireType;
     }
 
+    @NotNull
     public T wireType(WireType wireType) {
         this.wireType = wireType;
         return (T) this;
@@ -107,21 +111,14 @@ public class VanillaNetworkContext<T extends VanillaNetworkContext> implements N
         return this.sessionDetails;
     }
 
+    @NotNull
     @Override
     public T sessionDetails(SessionDetailsProvider sessionDetails) {
         this.sessionDetails = sessionDetails;
         return (T) this;
     }
 
-    public boolean connectionClosed() {
-        return this.connectionClosed;
-    }
-
-    @Override
-    public void connectionClosed(boolean connectionClosed) {
-        this.connectionClosed = connectionClosed;
-    }
-
+    @Nullable
     @Override
     public TerminationEventHandler terminationEventHandler() {
         return terminationEventHandler;
@@ -168,13 +165,23 @@ public class VanillaNetworkContext<T extends VanillaNetworkContext> implements N
 
     @Override
     public void close() {
+        if (isClosed)
+            return;
+        isClosed = true;
+        Closeable.closeQuietly(networkStatsListener);
+    }
 
+
+    @Override
+    public boolean isClosed() {
+        return isClosed;
     }
 
     public Runnable socketReconnector() {
         return socketReconnector;
     }
 
+    @NotNull
     public T socketReconnector(Runnable socketReconnector) {
         this.socketReconnector = socketReconnector;
         return (T) this;

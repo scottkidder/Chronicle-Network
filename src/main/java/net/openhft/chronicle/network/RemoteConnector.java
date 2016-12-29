@@ -25,6 +25,7 @@ import net.openhft.chronicle.core.threads.InvalidEventHandlerException;
 import net.openhft.chronicle.core.util.ThrowingFunction;
 import net.openhft.chronicle.network.connection.TcpChannelHub;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -35,6 +36,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static net.openhft.chronicle.network.NetworkStatsListener.*;
+
 public class RemoteConnector implements Closeable {
 
     @NotNull
@@ -43,6 +46,7 @@ public class RemoteConnector implements Closeable {
     private final Integer tcpBufferSize;
     private volatile boolean closed;
 
+    @Nullable
     private volatile List<Closeable> closeables = new ArrayList<>();
 
     public RemoteConnector(@NotNull final ThrowingFunction<NetworkContext, TcpEventHandler, IOException> tcpEventHandlerFactory) {
@@ -54,14 +58,14 @@ public class RemoteConnector implements Closeable {
         Closeable.closeQuietly(socketChannel);
     }
 
-    public void connect(final String remoteHostPort,
-                        final EventLoop eventLoop,
+    public void connect(@NotNull final String remoteHostPort,
+                        @NotNull final EventLoop eventLoop,
                         @NotNull NetworkContext nc,
                         final long retryInterval) {
 
         final InetSocketAddress address = TCPRegistry.lookup(remoteHostPort);
 
-        final RCEventHandler handler = new RCEventHandler(
+        @NotNull final RCEventHandler handler = new RCEventHandler(
                 remoteHostPort,
                 nc,
                 eventLoop,
@@ -77,7 +81,7 @@ public class RemoteConnector implements Closeable {
 
         closed = true;
 
-        final List<Closeable> closeables = this.closeables;
+        @Nullable final List<Closeable> closeables = this.closeables;
         this.closeables = null;
         closeables.forEach(Closeable::closeQuietly);
     }
@@ -96,6 +100,7 @@ public class RemoteConnector implements Closeable {
 
     private class RCEventHandler implements EventHandler, Closeable {
 
+        @NotNull
         @Override
         public HandlerPriority priority() {
             return HandlerPriority.BLOCKING;
@@ -120,6 +125,7 @@ public class RemoteConnector implements Closeable {
             this.retryInterval = retryInterval;
         }
 
+
         @Override
         public boolean action() throws InvalidEventHandlerException, InterruptedException {
             if (closed)
@@ -142,7 +148,7 @@ public class RemoteConnector implements Closeable {
 
                 nc.socketChannel(sc);
                 nc.isAcceptor(false);
-
+                notifyHostPort(sc, nc.networkStatsListener());
                 eventHandler = tcpHandlerSupplier.apply(nc);
 
             } catch (AlreadyConnectedException e) {
@@ -153,7 +159,7 @@ public class RemoteConnector implements Closeable {
                 return false;
             }
             eventLoop.addHandler(eventHandler);
-            final List<Closeable> closeables = RemoteConnector.this.closeables;
+            @Nullable final List<Closeable> closeables = RemoteConnector.this.closeables;
             if (closeables == null)
                 // we have died.
                 Closeable.closeQuietly(eventHandler);
@@ -163,6 +169,7 @@ public class RemoteConnector implements Closeable {
             throw new InvalidEventHandlerException();
         }
 
+        @NotNull
         @Override
         public String toString() {
             return getClass().getSimpleName() + "{"

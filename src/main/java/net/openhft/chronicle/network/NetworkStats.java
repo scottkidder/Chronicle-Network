@@ -64,17 +64,20 @@ public interface NetworkStats<T extends NetworkStats> extends ReadMarshallable, 
     /**
      * @return the identifier of this instance of engine
      */
-    long localIdentifier();
+    int localIdentifier();
 
-    T localIdentifier(long localIdentifier);
+    T localIdentifier(int localIdentifier);
 
+    boolean isAcceptor();
+
+    void isAcceptor(boolean isAcceptor);
 
     /**
      * the identifier of the remote instance of engine
      */
-    long remoteIdentifier();
+    int remoteIdentifier();
 
-    T remoteIdentifier(long remoteIdentifier);
+    T remoteIdentifier(int remoteIdentifier);
 
     void clientId(UUID clientId);
 
@@ -87,4 +90,25 @@ public interface NetworkStats<T extends NetworkStats> extends ReadMarshallable, 
     boolean isConnected();
 
     void isConnected(boolean isConnected);
+
+    /**
+     * @param value round trip latency, 50th percentile
+     */
+    void percentile50th(long value);
+
+    /**
+     * @param value round trip latency, 90th percentile
+     */
+
+    void percentile90th(long value);
+
+    /**
+     * @param value round trip latency, 99th percentile
+     */
+    void percentile99th(long value);
+
+    /**
+     * @param value round trip latency, 99.9th percentile
+     */
+    void percentile99_9th(long value);
 }
