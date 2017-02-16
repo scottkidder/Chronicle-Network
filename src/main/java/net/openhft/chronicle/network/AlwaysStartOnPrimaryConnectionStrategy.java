@@ -2,6 +2,8 @@ package net.openhft.chronicle.network;
 
 import net.openhft.chronicle.core.Jvm;
 import net.openhft.chronicle.core.io.IORuntimeException;
+import net.openhft.chronicle.core.util.Time;
+import net.openhft.chronicle.network.connection.FatalFailureMonitor;
 import net.openhft.chronicle.network.connection.SocketAddressSupplier;
 import net.openhft.chronicle.wire.WireIn;
 import net.openhft.chronicle.wire.Wires;
@@ -12,8 +14,8 @@ import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
 import java.nio.channels.SocketChannel;
+import java.util.concurrent.TimeUnit;
 
-import static net.openhft.chronicle.core.Jvm.pause;
 import static net.openhft.chronicle.core.io.Closeable.closeQuietly;
 import static net.openhft.chronicle.network.connection.TcpChannelHub.TCP_BUFFER;
 
@@ -27,50 +29,27 @@ public class AlwaysStartOnPrimaryConnectionStrategy implements ConnectionStrateg
     private static final Logger LOG = LoggerFactory.getLogger(AlwaysStartOnPrimaryConnectionStrategy.class);
 
     private int tcpBufferSize = Integer.getInteger("tcp.client.buffer.size", TCP_BUFFER);
-    private int timeoutMs = Integer.getInteger("client.timeout", 2_000);
-    private int pausePeriodMs = Integer.getInteger("client.timeout", 1_000);
+    private int pausePeriodMs = Integer.getInteger("client.timeout", 500);
 
     public void readMarshallable(@NotNull WireIn wire) throws IORuntimeException {
         Wires.readMarshallable(this, wire, false);
     }
 
     @Nullable
-    public SocketChannel connect(String name,
-                                 SocketAddressSupplier socketAddressSupplier,
-                                 NetworkStatsListener<NetworkContext> networkStatsListener) {
+    @Override
+    public SocketChannel connect(@NotNull String name,
+                                 @NotNull SocketAddressSupplier socketAddressSupplier,
+                                 @Nullable NetworkStatsListener<? extends NetworkContext> networkStatsListener,
+                                 boolean didLogIn,
+                                 @Nullable FatalFailureMonitor fatalFailureMonitor) throws InterruptedException {
 
-        socketAddressSupplier.resetToPrimary();
 
-        long start = System.currentTimeMillis();
+        if (socketAddressSupplier.get() == null || didLogIn)
+            socketAddressSupplier.resetToPrimary();
+        else
+            socketAddressSupplier.failoverToNextAddress();
 
         for (; ; ) {
-
-            if (start + timeoutMs < System.currentTimeMillis()) {
-
-                @NotNull String oldAddress = socketAddressSupplier.toString();
-
-                // fatal failure we have attempted all the host
-                if (isAtEnd(socketAddressSupplier))
-                    return null;
-
-                socketAddressSupplier.failoverToNextAddress();
-
-                if ("(none)".equals(oldAddress)) {
-                    LOG.info("Connection Dropped to address=" +
-                            oldAddress + ", so will fail over to" +
-                            socketAddressSupplier + ", name=" + name);
-                }
-
-                if (socketAddressSupplier.get() == null) {
-                    Jvm.warn().on(getClass(), "failed to establish a socket " +
-                            "connection of any of the following servers=" +
-                            socketAddressSupplier.all() + " so will re-attempt");
-                    socketAddressSupplier.resetToPrimary();
-                }
-
-                // reset the timer, so that we can try this new address for a while
-                start = System.currentTimeMillis();
-            }
 
             SocketChannel socketChannel = null;
             try {
@@ -78,15 +57,31 @@ public class AlwaysStartOnPrimaryConnectionStrategy implements ConnectionStrateg
                 @Nullable final InetSocketAddress socketAddress = socketAddressSupplier.get();
                 if (socketAddress == null) {
                     Jvm.warn().on(AlwaysStartOnPrimaryConnectionStrategy.class, "failed to obtain socketAddress");
+                    // at end
+                    if (isAtEnd(socketAddressSupplier)) {
+                        fatalFailureMonitor.onFatalFailure(name, "Failed to connect to any of these servers=" + socketAddressSupplier.remoteAddresses());
+                        return null;
+                    }
+                    socketAddressSupplier.failoverToNextAddress();
                     continue;
                 }
 
-                socketChannel = openSocketChannel(socketAddress, tcpBufferSize);
+                socketChannel = openSocketChannel(socketAddress, tcpBufferSize, 500);
 
                 if (socketChannel == null) {
-                    pause(pausePeriodMs);
+                    Jvm.debug().on(getClass(), "unable to connected to " + socketAddressSupplier.toString());
+
+                    // at end
+                    if (isAtEnd(socketAddressSupplier)) {
+                        fatalFailureMonitor.onFatalFailure(name, "Failed to connect to any of these servers=" + socketAddressSupplier.remoteAddresses());
+                        return null;
+                    }
+
+                    socketAddressSupplier.failoverToNextAddress();
                     continue;
                 }
+
+                Jvm.debug().on(getClass(), "successfully connected to " + socketAddressSupplier.toString());
 
                 if (networkStatsListener != null)
                     networkStatsListener.onHostPort(socketAddress.getHostString(), socketAddress.getPort());
@@ -103,7 +98,7 @@ public class AlwaysStartOnPrimaryConnectionStrategy implements ConnectionStrateg
                     LOG.info("", e);
 
                 socketAddressSupplier.failoverToNextAddress();
-                pause(pausePeriodMs);
+                Time.parkNanos(TimeUnit.MILLISECONDS.toNanos(pausePeriodMs));
             }
         }
     }
@@ -111,4 +106,5 @@ public class AlwaysStartOnPrimaryConnectionStrategy implements ConnectionStrateg
     private boolean isAtEnd(SocketAddressSupplier socketAddressSupplier) {
         return socketAddressSupplier.size() - 1 == socketAddressSupplier.index();
     }
+
 }

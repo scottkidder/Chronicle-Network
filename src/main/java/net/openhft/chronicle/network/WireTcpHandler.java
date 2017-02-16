@@ -89,6 +89,7 @@ public abstract class WireTcpHandler<T extends NetworkContext>
         if (wireType == BINARY)
             wireType = DELTA_BINARY.isAvailable() ? DELTA_BINARY : BINARY;
         this.wireType = wireType;
+
         if (publisher != null)
             publisher.wireType(wireType);
     }
@@ -108,7 +109,7 @@ public abstract class WireTcpHandler<T extends NetworkContext>
     }
 
     @Override
-    public void process(@NotNull Bytes in, @NotNull Bytes out) {
+    public void process(@NotNull Bytes in, @NotNull Bytes out, NetworkContext nc) {
 
         if (closed)
             return;
@@ -116,6 +117,7 @@ public abstract class WireTcpHandler<T extends NetworkContext>
         WireType wireType = wireType();
         if (wireType == null)
             wireType = in.readByte(in.readPosition() + 4) < 0 ? WireType.BINARY : WireType.TEXT;
+
         checkWires(in, out, wireType);
 
         // we assume that if any bytes were in lastOutBytesRemaining the sc.write() would have been
@@ -153,7 +155,8 @@ public abstract class WireTcpHandler<T extends NetworkContext>
 
         if (in.readRemaining() >= SIZE_OF_SIZE)
             onRead0();
-        onWrite(outWire);
+        else
+            onWrite(outWire);
 
         lastWritePosition = outWire.bytes().writePosition();
         lastReadRemaining = inWire.bytes().readRemaining();
@@ -199,8 +202,9 @@ public abstract class WireTcpHandler<T extends NetworkContext>
                         if (YamlLogging.showServerReads())
                             logYaml(dc);
                         onRead(dc, outWire);
+                        onWrite(outWire);
                     } catch (Exception e) {
-                        Jvm.warn().on(getClass(), "inWire=" + inWire.getClass(), e);
+                        Jvm.warn().on(getClass(), "inWire=" + inWire.getClass() + ",yaml=" + Wires.fromSizePrefixedBlobs(dc), e);
                     }
                 }
             }

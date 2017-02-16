@@ -1,10 +1,19 @@
 package net.openhft.chronicle.network.connection;
 
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.util.Time;
 import net.openhft.chronicle.network.ConnectionStrategy;
 import net.openhft.chronicle.network.NetworkContext;
 import net.openhft.chronicle.network.NetworkStatsListener;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+import java.net.InetSocketAddress;
 import java.nio.channels.SocketChannel;
+import java.util.concurrent.TimeUnit;
+
+import static net.openhft.chronicle.core.io.Closeable.closeQuietly;
+import static net.openhft.chronicle.network.connection.TcpChannelHub.TCP_BUFFER;
 
 /**
  * @author Rob Austin.
@@ -32,10 +41,99 @@ import java.nio.channels.SocketChannel;
  */
 public class FatalFailureConnectionStrategy implements ConnectionStrategy {
 
-    @Override
-    public SocketChannel connect(String name,
-                                 SocketAddressSupplier socketAddressSupplier,
-                                 NetworkStatsListener<NetworkContext> networkStatsListener) {
-        throw new UnsupportedOperationException("todo");
+    private static final long PAUSE = TimeUnit.MILLISECONDS.toNanos(300);
+    private final int attempts;
+    private int tcpBufferSize = Integer.getInteger("tcp.client.buffer.size", TCP_BUFFER);
+    private boolean hasSentFatalFailure;
+
+    /**
+     * @param attempts the number of attempts before a onFatalFailure() reported
+     */
+    public FatalFailureConnectionStrategy(int attempts) {
+        this.attempts = attempts;
     }
+
+    @Nullable
+    @Override
+    public SocketChannel connect(@NotNull String name,
+                                 @NotNull SocketAddressSupplier socketAddressSupplier,
+                                 @Nullable NetworkStatsListener<? extends NetworkContext> networkStatsListener,
+                                 boolean didLogIn,
+                                 @Nullable FatalFailureMonitor fatalFailureMonitor) throws InterruptedException {
+
+        if (socketAddressSupplier.size() == 0 && !hasSentFatalFailure && fatalFailureMonitor != null) {
+            hasSentFatalFailure = true;
+            fatalFailureMonitor.onFatalFailure(name, "no connections have not been configured");
+            Time.parkNanos(PAUSE);
+            return null;
+        }
+
+        int failures = 0;
+        int maxFailures = socketAddressSupplier.size() * attempts;
+        socketAddressSupplier.resetToPrimary();
+
+        for (; ; ) {
+
+            if (Thread.currentThread().isInterrupted())
+                throw new InterruptedException();
+
+            if (failures == maxFailures && fatalFailureMonitor != null) {
+                if (!hasSentFatalFailure) {
+                    hasSentFatalFailure = true;
+                    fatalFailureMonitor.onFatalFailure(name, name);
+                }
+
+                return null;
+            }
+
+            SocketChannel socketChannel = null;
+            try {
+                @Nullable final InetSocketAddress socketAddress = socketAddressSupplier.get();
+                if (socketAddress == null) {
+                    failures++;
+                    socketAddressSupplier.failoverToNextAddress();
+                    Time.parkNanos(PAUSE);
+                    continue;
+                }
+
+                long millis = TimeUnit.NANOSECONDS.toMillis(PAUSE);
+                socketChannel = openSocketChannel(socketAddress, tcpBufferSize, millis);
+
+                if (socketChannel == null) {
+                    Jvm.warn().on(getClass(), "unable to connected to " + socketAddressSupplier.toString() + ", name=" + name);
+                    failures++;
+                    socketAddressSupplier.failoverToNextAddress();
+                    Time.parkNanos(PAUSE);
+                    continue;
+                }
+
+                Jvm.debug().on(getClass(), "successfully connected to " + socketAddressSupplier.toString());
+
+                if (networkStatsListener != null)
+                    networkStatsListener.onHostPort(socketAddress.getHostString(), socketAddress.getPort());
+
+                hasSentFatalFailure = false;
+                failures = 0;
+
+                // success
+                return socketChannel;
+
+            } catch (InterruptedException e) {
+                throw e;
+            } catch (Throwable e) {
+
+                //noinspection ConstantConditions
+                if (socketChannel != null)
+                    closeQuietly(socketChannel);
+
+                failures++;
+                socketAddressSupplier.failoverToNextAddress();
+                Time.parkNanos(PAUSE);
+            }
+
+        }
+
+    }
+
+
 }

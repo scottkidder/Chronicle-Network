@@ -185,7 +185,15 @@ public class TcpEventHandler implements EventHandler, Closeable, TcpEventHandler
                 if (invokeHandler())
                     oneInTen++;
                 return true;
+            } else if (read == 0) {
+                if (outBBB.readRemaining() > 0) {
+                //    System.out.println("w " + outBBB.readRemaining());
+                    if (invokeHandler())
+                        return true;
+                }
+                return false;
             }
+
             if (read < 0) {
                 close();
                 throw new InvalidEventHandlerException("socket closed " + sc);
@@ -193,17 +201,6 @@ public class TcpEventHandler implements EventHandler, Closeable, TcpEventHandler
 
             readLog.idle();
 
-            if (nc.heartbeatTimeoutMs() == 0)
-                return busy;
-
-            long tickTime = Time.tickTime();
-            if (tickTime > lastTickReadTime + nc.heartbeatTimeoutMs()) {
-
-                if (heartbeatListener != null)
-                    nc.heartbeatListener().onMissedHeartbeat();
-                closeSC();
-                throw new InvalidEventHandlerException("heatbeat timeout");
-            }
 
         } catch (ClosedChannelException e) {
             closeSC();
@@ -219,6 +216,18 @@ public class TcpEventHandler implements EventHandler, Closeable, TcpEventHandler
             closeSC();
             Jvm.warn().on(getClass(), "", e);
             throw new InvalidEventHandlerException(e);
+        } finally {
+
+            if (nc.heartbeatTimeoutMs() > 0) {
+                long tickTime = Time.tickTime();
+                if (tickTime > lastTickReadTime + nc.heartbeatTimeoutMs()) {
+
+                    if (heartbeatListener != null)
+                        nc.heartbeatListener().onMissedHeartbeat();
+                    closeSC();
+                    throw new InvalidEventHandlerException("heartbeat timeout");
+                }
+            }
         }
 
         return busy;
@@ -247,7 +256,7 @@ public class TcpEventHandler implements EventHandler, Closeable, TcpEventHandler
         long lastInBBBReadPosition;
         do {
             lastInBBBReadPosition = inBBB.readPosition();
-            tcpHandler.process(inBBB, outBBB,nc);
+            tcpHandler.process(inBBB, outBBB, nc);
 
             // did it write something?
             if (outBBB.writePosition() > outBBB.underlyingObject().limit() || outBBB.writePosition() >= 4) {
@@ -341,7 +350,7 @@ public class TcpEventHandler implements EventHandler, Closeable, TcpEventHandler
         if (wrote < 0) {
             closeSC();
         } else if (wrote > 0) {
-            lastTickReadTime = writeTickTime;
+            // lastTickReadTime = writeTickTime;
             outBBB.underlyingObject().compact().flip();
             outBBB.writePosition(outBBB.underlyingObject().limit());
             return true;

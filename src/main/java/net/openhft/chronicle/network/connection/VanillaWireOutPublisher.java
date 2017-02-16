@@ -46,7 +46,8 @@ public class VanillaWireOutPublisher implements WireOutPublisher {
     public VanillaWireOutPublisher(@NotNull WireType wireType) {
         this.closed = false;
         bytes = Bytes.elasticByteBuffer(TcpChannelHub.TCP_BUFFER);
-        wire = wireType.apply(bytes);
+        final WireType wireType0 = wireType == WireType.DELTA_BINARY ? WireType.BINARY : wireType;
+        wire = wireType0.apply(bytes);
     }
 
     /**
@@ -75,9 +76,13 @@ public class VanillaWireOutPublisher implements WireOutPublisher {
         try {
             while (wire.bytes().readRemaining() > 0) {
                 try (DocumentContext dc = wire.readingDocument()) {
-                    if (!dc.isPresent())
+                    Bytes<?> bytes = wire.bytes();
+                    if (!dc.isPresent()) {
+                        bytes.readPosition(bytes.readLimit());
                         return;
+                    }
                     LOG.info("Server Sends aync event:\n" + Wires.fromSizePrefixedBlobs(dc));
+                    bytes.readPosition(bytes.readLimit());
                 }
             }
         } finally {
@@ -191,12 +196,11 @@ public class VanillaWireOutPublisher implements WireOutPublisher {
     }
 
     private Object lock() {
-        return bytes;
+        return this;
     }
 
     @Override
     public synchronized void close() {
-
         closed = true;
         clear();
     }
@@ -215,11 +219,13 @@ public class VanillaWireOutPublisher implements WireOutPublisher {
 
     @Override
     public void wireType(@NotNull WireType wireType) {
-        if (WireType.valueOf(wire) == wireType)
+
+        final WireType wireType0 = wireType == WireType.DELTA_BINARY ? WireType.BINARY : wireType;
+        if (WireType.valueOf(wire) == wireType0)
             return;
 
         synchronized (lock()) {
-            wire = wireType.apply(bytes);
+            wire = wireType0.apply(bytes);
         }
     }
 
@@ -240,7 +246,6 @@ public class VanillaWireOutPublisher implements WireOutPublisher {
     @NotNull
     @Override
     public String toString() {
-
         return "VanillaWireOutPublisher{" +
                 ", closed=" + closed +
                 ", " + wire.getClass().getSimpleName() + "=" + bytes +
